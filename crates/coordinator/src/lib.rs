@@ -30,6 +30,7 @@ pub fn create_profile(profile: Profile) -> ExternResult<Record> {
         LinkTypes::PathToAgent,
         LinkTag::new(profile.nickname.to_lowercase().as_bytes().to_vec()),
     )?;
+
     create_link(
         agent_address,
         action_hash.clone(),
@@ -106,7 +107,9 @@ pub fn search_agents(nickname_filter: String) -> ExternResult<Vec<AgentPubKey>> 
         )));
     }
 
+    // create a path
     let prefix_path = prefix_path(nickname_filter.clone())?;
+    // get links for a given path
     let links = get_links(
         prefix_path.path_entry_hash()?,
         LinkTypes::PathToAgent,
@@ -115,13 +118,10 @@ pub fn search_agents(nickname_filter: String) -> ExternResult<Vec<AgentPubKey>> 
         )),
     )?;
 
-    let mut agents: Vec<AgentPubKey> = vec![];
-
-    for link in links {
-        if let Ok(pub_key) = AgentPubKey::try_from(link.target) {
-            agents.push(pub_key);
-        }
-    }
+    let agents = links
+        .into_iter()
+        .flat_map(|l| AgentPubKey::try_from(l.target))
+        .collect::<Vec<AgentPubKey>>();
 
     Ok(agents)
 }
@@ -167,7 +167,7 @@ pub fn get_agents_with_profile(_: ()) -> ExternResult<Vec<AgentPubKey>> {
 
     let children = path.children_paths()?;
 
-    let get_links_input: Vec<GetLinksInput> = children
+    let get_links_input = children
         .into_iter()
         .map(|path| {
             Ok(GetLinksInput::new(
@@ -184,13 +184,10 @@ pub fn get_agents_with_profile(_: ()) -> ExternResult<Vec<AgentPubKey>> {
         .flatten()
         .collect::<Vec<Link>>();
 
-    let mut agents: Vec<AgentPubKey> = vec![];
-
-    for link in links {
-        if let Ok(pub_key) = AgentPubKey::try_from(link.target) {
-            agents.push(pub_key);
-        }
-    }
+    let agents = links
+        .into_iter()
+        .flat_map(|l| AgentPubKey::try_from(l.target))
+        .collect::<Vec<AgentPubKey>>();
 
     Ok(agents)
 }
@@ -231,6 +228,7 @@ pub enum Signal {
         original_app_entry: EntryTypes,
     },
 }
+
 #[hdk_extern(infallible)]
 pub fn post_commit(committed_actions: Vec<SignedActionHashed>) {
     for action in committed_actions {
@@ -239,6 +237,7 @@ pub fn post_commit(committed_actions: Vec<SignedActionHashed>) {
         }
     }
 }
+
 fn signal_action(action: SignedActionHashed) -> ExternResult<()> {
     match action.hashed.content.clone() {
         Action::CreateLink(create_link) => {
@@ -307,6 +306,7 @@ fn signal_action(action: SignedActionHashed) -> ExternResult<()> {
         _ => Ok(()),
     }
 }
+
 fn get_entry_for_action(action_hash: &ActionHash) -> ExternResult<Option<EntryTypes>> {
     let record = match get_details(action_hash.clone(), GetOptions::default())? {
         Some(Details::Record(record_details)) => record_details.record,
