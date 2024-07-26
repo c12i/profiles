@@ -131,17 +131,19 @@ pub fn search_agents(nickname_filter: String) -> ExternResult<Vec<AgentPubKey>> 
 pub fn get_agent_profile(agent_pub_key: AgentPubKey) -> ExternResult<Option<Record>> {
     let links = get_links(agent_pub_key, LinkTypes::AgentToProfile, None)?;
 
-    if links.len() == 0 {
-        return Ok(None);
+    if let Some(link) = links.first() {
+        let profile = get_latest(
+            link.to_owned()
+                .target
+                .into_action_hash()
+                .ok_or(wasm_error!(WasmErrorInner::Guest(
+                    "Profile link target is not of ActionHash".into()
+                )))?,
+        )?;
+        Ok(Some(profile))
+    } else {
+        Ok(None)
     }
-
-    let link = links[0].clone();
-
-    let profile = get_latest(link.target.into_action_hash().ok_or(wasm_error!(
-        WasmErrorInner::Guest("Profile link target is not of ActionHash".into())
-    ))?)?;
-
-    Ok(Some(profile))
 }
 
 fn get_latest(action_hash: ActionHash) -> ExternResult<Record> {
@@ -149,14 +151,15 @@ fn get_latest(action_hash: ActionHash) -> ExternResult<Record> {
         WasmErrorInner::Guest("Profile not found".into())
     ))?;
 
-    match details {
-        Details::Entry(_) => Err(wasm_error!(WasmErrorInner::Guest(
-            "Malformed details".into()
-        ))),
-        Details::Record(element_details) => match element_details.updates.last() {
+    if let Details::Record(element_details) = details {
+        match element_details.updates.last() {
             Some(update) => get_latest(update.action_address().clone()),
             None => Ok(element_details.record),
-        },
+        }
+    } else {
+        Err(wasm_error!(WasmErrorInner::Guest(
+            "Malformed details".into()
+        )))
     }
 }
 
